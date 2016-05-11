@@ -1,6 +1,6 @@
 # Native Intermediate Representation (NIR)
 
-NIR is high-level object-orriented SSA-based representation. The core of the
+NIR is high-level object-oriented SSA-based representation. The core of the
 representation is a subset of LLVM instructions, types and values, augmented
 with a number of high-level primitives that are necessary to
 efficiently compiler modern languages like Scala.
@@ -23,19 +23,22 @@ object Test {
 Would map to:
 
 ```
-module test.Test_m() {
-  def test.Test_m::main_string_arr_unit : (module test.Test_m, string[]) => unit {
-    %2(%0 : module test.Test_m, %1 : string[]):
-      %3 = field-elem[...] java.lang.System_m, java.lang.System_m::out
-      %4 = load[...] %3
-      %5 = method-elem[...] %4, java.io.PrintStream_c::println_string_unit
-      %6 = call[...] %5(%4, "Hello, world!")
-      ret %6
-  }
-  def test.Test_m::init : (module test.Test_m) => unit {
-    %1(%0 : module test.Test_m):
-      ret unit
-  }
+pin(@test.Test::init) module @test.Test : #java.lang.Object
+
+def @test.Test::main_class.ssnr.ObjectArray_unit : (module @test.Test, class #scala.scalanative.runtime.ObjectArray) => unit {
+  %src.2(%src.0: module @test.Test, %src.1: class #scala.scalanative.runtime.ObjectArray):
+    %src.3 = module @java.lang.System
+    %src.4 = field[...] %src.3: module @java.lang.System, @java.lang.System::field.out
+    %src.5 = load[...] %src.4: ptr
+    %src.6 = method[...] %src.5: class #java.io.PrintStream, #java.io.PrintStream::println_class.java.lang.String_unit
+    %src.7 = call[...] %src.6: ptr(%src.5: class #java.io.PrintStream, "Hello, world!")
+    ret %src.7: unit
+}
+
+def @test.Test::init : (module @test.Test) => void {
+  %src.1(%src.0: module @test.Test):
+    %src.2 = call[(class #java.lang.Object) => void] #java.lang.Object::init(%src.0: module @test.Test)
+    ret unit
 }
 ```
 
@@ -46,43 +49,50 @@ Here we can see a few major points:
    value and type parameters. Control flow instructions can only appear
    as the last instruction of the basic block.
 
-2. Basic blocks have parameters. Parameters directly correspond to phi instructions in the
-   classical SSA.
+2. Basic blocks have parameters. Parameters directly correspond to phi
+   instructions in the classical SSA.
 
 3. The representation is strongly typed. All parameters have corresponding type
    annotations. Instructions may take type arguments (they are ommited
    here for brevity.)
 
 4. Unlike LLVM, it has support for high-level features such as java-like
-   class-based objects. Objects may contain methods and fields. There is no overloading
-   or access control so names must be mangled appropriately.
+   classes. Classes may contain methods and fields. There is no overloading
+   or access control modifiers so names must be mangled appropriately.
 
-## Notation
-
-TODO
+5. All definitions live in a single top-level scope. During compilation they
+   are lazily loaded until all reachable definitions have been discovered.
+   `pin` and `pin-if` attributes are used to expressed additional dependencies.
+   Nesting/ownership is of definitions is expressed through names.
 
 ## Definitions
 
 Low-level definitions:
 
-1. **State**: `..$attrs var @$name: $type = $value`
+1. **Var**: `..$attrs var @$name: $type = $value`
 
    Corresponds to LLVM's [`global`](http://llvm.org/docs/LangRef.html#global-variables)
-   when used in the top-level scope and to fields, when used inside classes and modules.
+   when used in the top-level scope and to fields, when used as a member of
+   classes and modules.
+
+1. **Const**: `..$attrs var @$name: $type = $value`
+
+   Corresponds to LLVM's [`const`](http://llvm.org/docs/LangRef.html#global-variables)
+   when used in the top-level scope.
 
 1. **Function declaration**: `..$attrs def @$name: $type`
 
    Correspond to LLVM's
    [`declare`](http://llvm.org/docs/LangRef.html#functions)
    when used on the top-level of the compilation unit and
-   to abstract methods when used inside classes and interfaces.
+   to abstract methods when used inside classes and traits.
 
 1. **Function definition**: `..$attrs def @$name: $type { ..$blocks }`
 
    Corresponds to LLVM's
    [`define`](http://llvm.org/docs/LangRef.html#functions)
    when used on the top-level of the compilation unit and
-   to normal methods when used inside classes, interfaces and modules.
+   to normal methods when used inside classes, traits and modules.
 
 1. **Struct**: `..$attrs struct @$name { ..$types }`
 
@@ -92,17 +102,18 @@ Low-level definitions:
 
 High-level definitions:
 
-1. **Interface**: `..$attrs interface @$name(..$interfaces) { ..$members }`
+1. **Trait**: `..$attrs trait #$name : ..$interfaces`
 
-   Java-style interfaces. May contain abstract and concrete methods as members.
+   Scala-like classes. May contain abstract and concrete methods as members.
 
-1. **Class**: `..$attrs class @$name($parent, ..$interfaces) { ..$members }`
+1. **Class**: `..$attrs class #$name : $parent, ..$traits`
 
-   Java-style classes. May contain state, abstract and concrete methods as members.
+   Scala-like classes. May contain vars, abstract and concrete methods as members.
 
-1. **Module**: `..$attrs module @$name($parent, ..$interfaces) { ..$members }`
+1. **Module**: `..$attrs module @$name : $parent, ..$interfaces`
 
-   Scala-style modules (i.e. `object $name`) May contains state and concrete methods as members.
+   Scala-like modules (i.e. `object $name`) May contains vars and concrete
+   methods as members.
 
 ## Types
 
@@ -125,28 +136,26 @@ Low-level types:
 
    Corresponds to LLVM's [floating point types](http://llvm.org/docs/LangRef.html#floating-point-types).
 
-1. **Array value**: `[$type x N]`
+1. **Array**: `[$type x N]`
 
    Corresponds to LLVM's [aggregate array type](http://llvm.org/docs/LangRef.html#array-type).
 
-1. **Pointer**: `ptr $type`
+1. **Pointer**: `ptr`
 
-   Corresponds to LLVM's [pointer type](http://llvm.org/docs/LangRef.html#pointer-type).
+   Corresponds to LLVM's [pointer type](http://llvm.org/docs/LangRef.html#pointer-type)
+   with a major distinction of not preserving the type of memory that's being
+   pointed at. Pointers are going to become untyped in LLVM in near future too,
+   currently we just always compile them to `i8*`.
 
 1. **Function**: `(..$args) => $ret`
 
    Corresponds to LLVM's [function type](http://llvm.org/docs/LangRef.html#function-type).
 
-1. **Struct**: `struct @$name`
+1. **Struct**: `struct #$name`
 
    Corresponds to LLVM's [aggregate structure type](http://llvm.org/docs/LangRef.html#structure-type).
 
 High-level types:
-
-1. **Size**: `size`
-
-   Unsigned integer type of bit-depth that depends on target platform.
-   Corresponds to C's [`size_t`](http://pubs.opengroup.org/onlinepubs/009695399/basedefs/stddef.h.html).
 
 1. **Unit**: `unit`
 
@@ -156,45 +165,17 @@ High-level types:
 
    Corresponds to `scala.Nothing`
 
-1. **Null**: `null`
-
-   Corresponds to `scala.Null`
-
-1. **Built-in classes**:
-
-    Java Class         | Built-in Type
-   --------------------|---------------------
-   java.lang.Object    | `object`
-   java.lang.Class     | `class`
-   java.lang.String    | `string`
-   java.lang.Character | `character`
-   java.lang.Boolean   | `boolean`
-   java.lang.Byte      | `byte`
-   java.lang.Short     | `short`
-   java.lang.Integer   | `integer`
-   java.lang.Long      | `long`
-   java.lang.Float     | `float`
-   java.lang.Double    | `double`
-
-   These types are special as they have special representation
-   at runtime. Most of the box types are packed into pointer value,
-   without performing any allocations.
-
-1. **Class**: `class @$name`
+1. **Class**: `class #$name`
 
    A reference to class instance.
 
-1. **Interface**: `interface @$name`
+1. **Interface**: `trait #$name`
 
    A reference to interface instance.
 
 1. **Module**: `module @$name`
 
    A reference to scala-style module.
-
-1. **Array**: `$type[]`
-
-   Corresponds to java-style arrays.
 
 ## Basic Blocks & Control-Flow
 
@@ -236,15 +217,20 @@ Low-level control-flow instructions:
    [`switch`](http://llvm.org/docs/LangRef.html#switch-instruction).
 
 1. **Invoke**: `invoke[$type] $funptr(..$values) to $success unwind $failure`
+
    Invoke function pointer, jump to success in case value is returned,
    unwind to failure if exception was thrown. Corresponds to LLVM's
    [`invoke`](http://llvm.org/docs/LangRef.html#invoke-instruction).
+
+1. **Resume**: `resume $excrec`.
 
 High-level control flow instructions:
 
 1. **Throw**:`throw $value`
 
    Throws the values and starts unwinding.
+
+1. **Try**: `try $succ catch $failure`
 
 ## Operations
 

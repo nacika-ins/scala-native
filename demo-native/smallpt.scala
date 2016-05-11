@@ -1,4 +1,4 @@
-package demo
+/*package demo
 
 import scalanative.native._, stdlib._
 import java.lang.Math.{PI, sin, cos, abs, pow, sqrt}
@@ -205,3 +205,13 @@ object Main {
     }
   }
 }
+*/
+package test
+
+import System.out.println
+
+object Test {
+    def main(args: Array[String]): Unit =
+          println("Hello, world!")
+}
+
