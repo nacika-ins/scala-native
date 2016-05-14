@@ -1,2 +1,11 @@
 scalalib/src/
 target/
+/image0.ppm
+/out.dot
+
+# IntelliJ IDEA
+.idea/
+*.iml
+!.idea/libraries/SBT__com_jcraft_jsch_0_1_46_jar.xml
+
+
